@@ -5,3 +5,10 @@ export type Product = {
     category: string
     stock: number
 }
+
+export type ProductFormData = {
+    name: string
+    price: number
+    category: string
+    stock: number
+}
