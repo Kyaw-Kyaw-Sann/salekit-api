@@ -2,6 +2,7 @@ import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import pool from './db.js'
+import productRouter from './routes/productRoutes.js'
 
 dotenv.config()
 
@@ -11,7 +12,7 @@ const PORT = Number(process.env.PORT) || 3000
 async function testDatabaseConnection(){
     try{
         await pool.query('SELECT 1')
-        console.log("Databse connected successfully.")
+        console.log("Database connected successfully.")
     }catch(error){
         const message = 
             error instanceof Error ? error.message : 'Unknown Database Error'
@@ -24,6 +25,8 @@ app.use(cors({
 }))
 
 app.use(express.json())
+
+app.use('/api/products', productRouter)
 
 app.get('/api/health',(_request, response)=>{
     response.status(200).json({
