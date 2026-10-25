@@ -12,3 +12,41 @@ export type ProductFormData = {
     category: string
     stock: number
 }
+
+export type SignupData = {
+    name: string
+    email: string
+    password: string
+}
+
+export type VerifyEmailData = {
+    email: string
+    otp: string
+}
+
+export type ResendVerificationOtpData = {
+    email: string
+}
+
+export type LoginData = {
+  email: string
+  password: string
+}
+
+declare global {
+  namespace Express {
+    interface Request {
+      userId?: string
+    }
+  }
+}
+
+export type ForgotPasswordData = {
+  email: string
+}
+
+export type ResetPasswordData = {
+  email: string
+  otp: string
+  newPassword: string
+}
