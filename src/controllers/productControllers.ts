@@ -8,6 +8,9 @@ type ProductRow = Product & RowDataPacket;
 type ProductParams = { 
     productId: string
 }
+type ProductIdRow = RowDataPacket & {
+  id: string
+}
 
 function getProductValidationError(
   productData: ProductFormData,
@@ -33,10 +36,17 @@ function getProductValidationError(
   return null;
 }
 
-export async function getProducts(_request: Request, response: Response) {
+export async function getProducts(request: Request, response: Response) {
+
+  if (!request.userId) {
+    return response.status(401).json({
+      message: "Authentication required",
+    })
+  }
+
   try {
     const [products] = await pool.query<ProductRow[]>(
-      "SELECT id, name, price, category, stock FROM products",
+      "SELECT id, name, price, category, stock FROM products WHERE user_id=?",[request.userId]
     );
 
     return response.status(200).json(products);
@@ -53,12 +63,19 @@ export async function getProducts(_request: Request, response: Response) {
 }
 
 export async function getProductById(request: Request<ProductParams>, response: Response) {
+  
+  if(!request.userId){
+    return response.status(401).json({
+      message: "Authentication required"
+    })
+  }
+
   try {
     const { productId } = request.params;
 
     const [products] = await pool.query<ProductRow[]>(
-      `SELECT id, name, price, category, stock FROM products WHERE id=? LIMIT 1`,
-      [productId],
+      `SELECT id, name, price, category, stock FROM products WHERE id=? AND user_id=? LIMIT 1`,
+      [productId, request.userId],
     );
 
     if (products.length === 0) {
@@ -81,6 +98,13 @@ export async function getProductById(request: Request<ProductParams>, response: 
 }
 
 export async function createProduct(request: Request, response: Response) {
+  
+  if (!request.userId) {
+  return response.status(401).json({
+    message: "Authentication required",
+  })
+}
+
   if (
     !request.body ||
     typeof request.body !== "object" ||
@@ -108,8 +132,8 @@ export async function createProduct(request: Request, response: Response) {
     const cleanCategory = category.trim();
 
     await pool.execute(
-      `INSERT INTO products ( id, name, price, category, stock) VALUES (?, ?, ?, ?, ?)`,
-      [id, cleanName, price, cleanCategory, stock],
+      `INSERT INTO products ( id, user_id, name, price, category, stock) VALUES (?,?, ?, ?, ?, ?)`,
+      [id, request.userId, cleanName, price, cleanCategory, stock],
     );
 
     const newProduct: Product = {
@@ -134,6 +158,13 @@ export async function createProduct(request: Request, response: Response) {
 }
 
 export async function updateProduct(request: Request<ProductParams>, response: Response) {
+  
+   if (!request.userId) {
+    return response.status(401).json({
+      message: "Authentication required",
+    })
+  }
+  
   const { productId } = request.params;
 
   if (
@@ -161,8 +192,8 @@ export async function updateProduct(request: Request<ProductParams>, response: R
 
   try{
 
-    const [existingProducts] = await pool.query<ProductRow[]>(
-        `SELECT * from products WHERE id=? LIMIT 1`,[productId]
+    const [existingProducts] = await pool.query<ProductIdRow[]>(
+        `SELECT id from products WHERE id=? AND user_id=? LIMIT 1`,[productId, request.userId]
     )
 
    if(existingProducts.length===0){
@@ -174,8 +205,8 @@ export async function updateProduct(request: Request<ProductParams>, response: R
    await pool.execute(
     `UPDATE products
      SET name=?, price=?, category=?, stock=? 
-     WHERE id=? `,
-     [cleanName, price, cleanCategory, stock, productId]
+     WHERE id=? AND user_id=? `,
+     [cleanName, price, cleanCategory, stock, productId, request.userId]
    )
 
    const updatedProduct : Product = {
@@ -206,11 +237,18 @@ export async function deleteProduct(
     response: Response
 ) {
 
+  if (!request.userId) {
+    return response.status(401).json({
+      message: "Authentication required",
+    })
+  }
+
     try{
         const {productId} = request.params
 
         const [results] = await pool.execute<ResultSetHeader>(
-            `DELETE FROM products WHERE id=?`,[productId]
+            `DELETE FROM products WHERE id=? AND user_id=?`,
+            [productId, request.userId]
         )
 
         if(results.affectedRows===0){

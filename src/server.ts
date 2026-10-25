@@ -3,6 +3,8 @@ import cors from 'cors'
 import dotenv from 'dotenv'
 import pool from './db.js'
 import productRouter from './routes/productRoutes.js'
+import authRouter from './routes/authRoutes.js'
+import cookieParser from "cookie-parser"
 
 dotenv.config()
 
@@ -25,7 +27,9 @@ app.use(cors({
 }))
 
 app.use(express.json())
+app.use(cookieParser())
 
+app.use('/api/auth', authRouter)
 app.use('/api/products', productRouter)
 
 app.get('/api/health',(_request, response)=>{
