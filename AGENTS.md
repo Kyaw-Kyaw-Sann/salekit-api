@@ -370,11 +370,17 @@ Follow this order, completing and testing one small behavior at a time:
 24. Clear reset OTP fields and require a normal login after reset.
 25. Add focused rate limiting to authentication and OTP endpoints.
 26. Test signup, verification, login, protected access, logout, forgot password, and reset password with an API client.
+
+||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+
 27. Review the existing `products` rows and agree on their ownership migration.
 28. Add `products.user_id` only after exact database authorization.
 29. Protect product routes with the authentication middleware.
 30. Convert one product endpoint at a time to ownership-aware SQL and test it.
 31. Test complete isolation using two separate user accounts.
+
+||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+
 32. Review the exact `users.role` schema change and test-account promotion plan.
 33. Add the `role` field only after exact database authorization, defaulting ordinary accounts to `user`.
 34. Add the role type, select it during login, sign it into the JWT, validate it during verification, and expose it on the authenticated request.
@@ -382,6 +388,7 @@ Follow this order, completing and testing one small behavior at a time:
 36. Add `GET /api/admin/users` with safe response fields only.
 37. Add `GET /api/admin/stats` with simple aggregate counts only.
 38. Test both admin endpoints with no authentication, a normal user, and an admin.
+
 39. Run the TypeScript build and report the real result.
 40. Only then resume React authentication and product integration, one frontend data flow at a time.
 

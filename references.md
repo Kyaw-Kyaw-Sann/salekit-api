@@ -1,3 +1,5 @@
+>>>> .env
+
 PORT=3000
 NODE_ENV=development
 FRONTEND_URL=http://localhost:5173
@@ -22,17 +24,26 @@ SMTP_FROM="SaleKit <kyawhsan042219@gmail.com>"
 
 /////////////////////////////////////////////////////
 
+>>>> user table create
+
 CREATE TABLE users (
   id CHAR(36) PRIMARY KEY,
   name VARCHAR(100) NOT NULL,
   email VARCHAR(255) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
+
   is_verified BOOLEAN NOT NULL DEFAULT FALSE,
+  role ENUM('user', 'admin') NOT NULL DEFAULT 'user',
+
   verification_otp_hash CHAR(64) NULL,
   verification_otp_expires_at DATETIME NULL,
+
   reset_otp_hash CHAR(64) NULL,
   reset_otp_expires_at DATETIME NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  created_at TIMESTAMP NOT NULL
+    DEFAULT CURRENT_TIMESTAMP,
+
   updated_at TIMESTAMP NOT NULL
     DEFAULT CURRENT_TIMESTAMP
     ON UPDATE CURRENT_TIMESTAMP
@@ -41,9 +52,9 @@ ENGINE = InnoDB
 DEFAULT CHARACTER SET = utf8mb4
 COLLATE = utf8mb4_unicode_ci;
 
-
 ////////////////////////////////////////////////////
 
+>>>> types
 
 export type SignupData = {
     name: string
@@ -65,23 +76,39 @@ export type LoginData = {
   password: string
 }
 
+export type ForgotPasswordData = {
+  email: string
+}
+
+export type ResetPasswordData = {
+  email: string
+  otp: string
+  newPassword: string
+}
+
+export type UserRole = "user" | "admin"
+
 declare global {
   namespace Express {
     interface Request {
       userId?: string
+      userRole?: UserRole
     }
   }
 }
 
-
 ///////////////////////////////////////////////
 
+>>>> all row types in auth controllers
 
 import type { Request, Response } from "express";
 import type {
+  ForgotPasswordData,
   LoginData,
   ResendVerificationOtpData,
+  ResetPasswordData,
   SignupData,
+  UserRole,
   VerifyEmailData,
 } from "../types.js";
 import bcrypt from "bcrypt";
@@ -89,7 +116,7 @@ import pool from "../db.js";
 import type { ResultSetHeader, RowDataPacket } from "mysql2";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { createOtpDigest, createOtpExpiry, generateOtp } from "../auth/otp.js";
-import { sendVerificationOtp } from "../auth/email.js";
+import { sendPasswordResetOtp, sendVerificationOtp } from "../auth/email.js";
 import { createAccessToken } from "../auth/jwt.js";
 
 const ACCESS_TOKEN_COOKIE_NAME = "access_token";
@@ -121,16 +148,28 @@ type LoginUserRow = RowDataPacket & {
   id: string;
   password_hash: string;
   is_verified: number;
+  role: UserRole
 };
 
 type MeUserRow = RowDataPacket & {
-  id: string
-  name: string
-  email: string
-}
+  id: string;
+  name: string;
+  email: string;
+};
 
+type ForgotPasswordUserRow = RowDataPacket & {
+  id: string;
+};
+
+type ResetPasswordUserRow = RowDataPacket & {
+  id: string;
+  reset_otp_hash: string | null;
+  reset_otp_expires_at: Date | null;
+};
 
 ///////////////////////////////////////////////
+
+>>> email.ts
 
 import "dotenv/config";
 import nodemailer from "nodemailer";
@@ -165,6 +204,18 @@ export async function sendVerificationOtp(
   });
 }
 
+export async function sendPasswordResetOtp(
+  recipientEmail: string,
+  otp: string,
+): Promise<void> {
+  await emailTransporter.sendMail({
+    from: smtpFrom,
+    to: recipientEmail,
+    subject: "Reset your SaleKit password",
+    text: `Your SaleKit password reset code is ${otp}. It expires in 10 minutes.`,
+  })
+}
+
 const emailTransporter = nodemailer.createTransport({
   host: smtpHost,
   port: smtpPort,
@@ -179,6 +230,8 @@ const emailTransporter = nodemailer.createTransport({
 export default emailTransporter;
 
 /////////////////////////////////////////////
+
+>>>> otp.ts
 
 import { createHmac, randomInt } from "node:crypto";
 
@@ -369,5 +422,28 @@ FROM products AS p
 JOIN users AS u
   ON u.id = p.user_id;
 
-//////////////////////////////////////////////
+/////////////////////////////////////////////////
+
+>>>>>>>>>>> RBAC migration sql
+
+ALTER TABLE users
+ADD COLUMN role ENUM('user', 'admin')
+NOT NULL DEFAULT 'user'
+AFTER is_verified;
+
+UPDATE users
+SET role = 'admin'
+WHERE id = '2e157dba-d2af-4339-8210-1793d6a2e0cb'
+  AND is_verified = 1;
+
+SELECT
+  id,
+  name,
+  email,
+  is_verified,
+  role
+FROM users
+ORDER BY created_at;
+
+////////////////////////////////////////////////
 
