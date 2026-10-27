@@ -5,6 +5,7 @@ import type {
   ResendVerificationOtpData,
   ResetPasswordData,
   SignupData,
+  UserRole,
   VerifyEmailData,
 } from "../types.js";
 import bcrypt from "bcrypt";
@@ -44,6 +45,7 @@ type LoginUserRow = RowDataPacket & {
   id: string;
   password_hash: string;
   is_verified: number;
+  role: UserRole
 };
 
 type MeUserRow = RowDataPacket & {
@@ -449,7 +451,7 @@ export async function login(request: Request, response: Response) {
 
   try {
     const [users] = await pool.query<LoginUserRow[]>(
-      `SELECT id, password_hash, is_verified
+      `SELECT id, password_hash, is_verified, role
        FROM users
        WHERE email = ?
        LIMIT 1`,
@@ -481,7 +483,7 @@ export async function login(request: Request, response: Response) {
       });
     }
 
-    const accessToken = createAccessToken(user.id);
+    const accessToken = createAccessToken(user.id, user.role);
 
     response.cookie(ACCESS_TOKEN_COOKIE_NAME, accessToken, {
       ...ACCESS_TOKEN_COOKIE_OPTIONS,
@@ -503,7 +505,7 @@ export async function login(request: Request, response: Response) {
 }
 
 export async function getMe(request: Request, response: Response) {
-  if (!request.userId) {
+  if (!request.userId || !request.userRole) {
     return response.status(401).json({
       message: "Authentication required",
     });
@@ -532,6 +534,7 @@ export async function getMe(request: Request, response: Response) {
         id: user.id,
         name: user.name,
         email: user.email,
+        role: request.userRole,
       },
     });
   } catch (error) {

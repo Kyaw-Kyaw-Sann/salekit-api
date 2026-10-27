@@ -33,14 +33,6 @@ export type LoginData = {
   password: string
 }
 
-declare global {
-  namespace Express {
-    interface Request {
-      userId?: string
-    }
-  }
-}
-
 export type ForgotPasswordData = {
   email: string
 }
@@ -49,4 +41,15 @@ export type ResetPasswordData = {
   email: string
   otp: string
   newPassword: string
+}
+
+export type UserRole = "user" | "admin"
+
+declare global {
+  namespace Express {
+    interface Request {
+      userId?: string
+      userRole?: UserRole
+    }
+  }
 }
