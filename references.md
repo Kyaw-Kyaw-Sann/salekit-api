@@ -24,6 +24,36 @@ SMTP_FROM="SaleKit <kyawhsan042219@gmail.com>"
 
 /////////////////////////////////////////////////////
 
+>>>> products table create
+
+CREATE TABLE IF NOT EXISTS products (
+  id VARCHAR(36) PRIMARY KEY,
+
+  user_id CHAR(36)
+    COLLATE utf8mb4_unicode_ci
+    NOT NULL,
+
+  name VARCHAR(100) NOT NULL,
+  price DECIMAL(10, 2) UNSIGNED NOT NULL,
+  category VARCHAR(50) NOT NULL,
+  stock INT UNSIGNED NOT NULL DEFAULT 0,
+
+  INDEX idx_products_user_id (user_id),
+
+  CONSTRAINT fk_products_user
+    FOREIGN KEY (user_id)
+    REFERENCES users(id)
+    ON UPDATE RESTRICT
+    ON DELETE RESTRICT
+)
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
+
+DESCRIBE products;
+
+SHOW CREATE TABLE products;
+
 >>>> user table create
 
 CREATE TABLE users (
@@ -51,6 +81,11 @@ CREATE TABLE users (
 ENGINE = InnoDB
 DEFAULT CHARACTER SET = utf8mb4
 COLLATE = utf8mb4_unicode_ci;
+
+UPDATE users
+SET role = 'admin'
+WHERE email = 'user@example.com'
+  AND is_verified = TRUE;
 
 ////////////////////////////////////////////////////
 
@@ -257,23 +292,27 @@ export function createOtpExpiry(): Date {
 
 /////////////////////////////////////////////////
 
-import "dotenv/config"
-import jwt from "jsonwebtoken"
+>>> jwt.ts
 
-const JWT_ISSUER = "salekit-api"
-const JWT_AUDIENCE = "salekit-frontend"
-const JWT_ALGORITHM = "HS256"
+import "dotenv/config";
+import jwt from "jsonwebtoken";
+import type { UserRole } from "../types.js";
 
-export function createAccessToken(userId: string): string {
-  const jwtSecret = process.env.JWT_SECRET
+const JWT_ISSUER = "salekit-api";
+const JWT_AUDIENCE = "salekit-frontend";
+const JWT_ALGORITHM = "HS256";
+
+export function createAccessToken(userId: string, role: UserRole): string {
+  const jwtSecret = process.env.JWT_SECRET;
 
   if (!jwtSecret) {
-    throw new Error("JWT_SECRET is not configured")
+    throw new Error("JWT_SECRET is not configured");
   }
 
   return jwt.sign(
     {
       type: "access",
+      role,
     },
     jwtSecret,
     {
@@ -283,74 +322,108 @@ export function createAccessToken(userId: string): string {
       audience: JWT_AUDIENCE,
       expiresIn: "1h",
     },
-  )
+  );
 }
 
-export function verifyAccessToken(token: string): string {
-  const jwtSecret = process.env.JWT_SECRET
+export function verifyAccessToken(token: string): {
+  userId: string;
+  role: UserRole;
+} {
+  const jwtSecret = process.env.JWT_SECRET;
 
   if (!jwtSecret) {
-    throw new Error("JWT_SECRET is not configured")
+    throw new Error("JWT_SECRET is not configured");
   }
 
   const payload = jwt.verify(token, jwtSecret, {
     algorithms: [JWT_ALGORITHM],
     issuer: JWT_ISSUER,
     audience: JWT_AUDIENCE,
-  })
+  });
 
   if (
-    typeof payload === "string" ||
-    typeof payload.sub !== "string" ||
-    payload.sub === "" ||
-    payload.type !== "access" ||
-    typeof payload.exp !== "number"
-  ) {
-    throw new Error("Invalid access token")
-  }
-
-  return payload.sub
+  typeof payload === "string" ||
+  typeof payload.sub !== "string" ||
+  payload.sub === "" ||
+  payload.type !== "access" ||
+  typeof payload.exp !== "number" ||
+  (payload.role !== "user" && payload.role !== "admin")
+) {
+  throw new Error("Invalid access token")
 }
+
+  return {
+  userId: payload.sub,
+  role: payload.role,
+}
+}
+
 
 //////////////////////////////////////////
 
-import type {
-  NextFunction,
-  Request,
-  Response,
-} from "express"
-import { verifyAccessToken } from "../auth/jwt.js"
+>>> authMiddelware.ts
 
-const ACCESS_TOKEN_COOKIE_NAME = "access_token"
+import type { NextFunction, Request, Response } from "express";
+import { verifyAccessToken } from "../auth/jwt.js";
+import type { UserRole } from "../types.js";
+
+const ACCESS_TOKEN_COOKIE_NAME = "access_token";
 
 export function requireAuth(
   request: Request,
   response: Response,
   next: NextFunction,
 ) {
-  const accessToken =
-    request.cookies?.[ACCESS_TOKEN_COOKIE_NAME]
+  const accessToken = request.cookies?.[ACCESS_TOKEN_COOKIE_NAME];
 
-  if (
-    typeof accessToken !== "string" ||
-    accessToken === ""
-  ) {
+  if (typeof accessToken !== "string" || accessToken === "") {
     return response.status(401).json({
       message: "Authentication required",
-    })
+    });
   }
 
   try {
-    request.userId = verifyAccessToken(accessToken)
-    return next()
+    const authenticatedUser = verifyAccessToken(accessToken);
+
+    request.userId = authenticatedUser.userId;
+    request.userRole = authenticatedUser.role;
+
+    return next();
   } catch {
     return response.status(401).json({
       message: "Authentication required",
-    })
+    });
   }
 }
 
+export function requireRole(requiredRole: UserRole) {
+  return function (
+    request: Request,
+    response: Response,
+    next: NextFunction,
+  ) {
+    if (!request.userId || !request.userRole) {
+      return response.status(401).json({
+        message: "Authentication required",
+      })
+    }
+
+    if (request.userRole !== requiredRole) {
+      return response.status(403).json({
+        message: "Access denied",
+      })
+    }
+
+    return next()
+  }
+}
+
+
 /////////////////////////////////////////
+
+>>>> rateLimiters.ts
+
+npm install express-rate-limit
 
 import { rateLimit } from "express-rate-limit"
 
@@ -381,69 +454,4 @@ export const otpLimiter = rateLimit({
 // → request 10 ကြိမ်အထိ
 // → 11 ကြိမ်မြောက်မှ 429
 
-
-//////////////////////////////////////////////////
-
--- 1. Nullable owner column အရင်ထည့်မယ်
-ALTER TABLE products
-ADD COLUMN user_id CHAR(36)
-COLLATE utf8mb4_unicode_ci NULL
-AFTER id;
-
--- 2. Existing products 10 ခုကို Borope ပိုင်အဖြစ်သတ်မှတ်မယ်
-UPDATE products
-SET user_id = '2e157dba-d2af-4339-8210-1793d6a2e0cb'
-WHERE user_id IS NULL;
-
--- 3. Unowned product မကျန်ကြောင်း စစ်မယ်
-SELECT COUNT(*) AS unowned_products
-FROM products
-WHERE user_id IS NULL;
-
--- 4. Required ownership နဲ့ foreign key ထည့်မယ်
-ALTER TABLE products
-MODIFY COLUMN user_id CHAR(36)
-  COLLATE utf8mb4_unicode_ci NOT NULL,
-ADD INDEX idx_products_user_id (user_id),
-ADD CONSTRAINT fk_products_user
-  FOREIGN KEY (user_id)
-  REFERENCES users(id)
-  ON UPDATE RESTRICT
-  ON DELETE RESTRICT;
-
---5. 
-SELECT
-  p.id,
-  p.name,
-  p.user_id,
-  u.name AS owner_name,
-  u.email AS owner_email
-FROM products AS p
-JOIN users AS u
-  ON u.id = p.user_id;
-
-/////////////////////////////////////////////////
-
->>>>>>>>>>> RBAC migration sql
-
-ALTER TABLE users
-ADD COLUMN role ENUM('user', 'admin')
-NOT NULL DEFAULT 'user'
-AFTER is_verified;
-
-UPDATE users
-SET role = 'admin'
-WHERE id = '2e157dba-d2af-4339-8210-1793d6a2e0cb'
-  AND is_verified = 1;
-
-SELECT
-  id,
-  name,
-  email,
-  is_verified,
-  role
-FROM users
-ORDER BY created_at;
-
-////////////////////////////////////////////////
 
